@@ -2,7 +2,7 @@ import { LayoutDashboard, TrendingUp, Sprout, MessageSquare } from 'lucide-react
 import { cn } from '../lib/utils';
 import { Language, Tab } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { hasApiKey } from '../services/gemini';
+import { useAiStatus } from '../services/gemini';
 
 interface NavigationProps {
   currentTab: Tab;
@@ -13,7 +13,7 @@ interface NavigationProps {
 
 export default function Navigation({ currentTab, setTab, lang, mobile }: NavigationProps) {
   const t = TRANSLATIONS[lang];
-  const aiReady = hasApiKey();
+  const aiStatus = useAiStatus();
 
   const items: { id: Tab; icon: typeof LayoutDashboard; label: string }[] = [
     { id: 'dashboard', icon: LayoutDashboard, label: t.nav.dashboard },
@@ -84,8 +84,12 @@ export default function Navigation({ currentTab, setTab, lang, mobile }: Navigat
         <div className="p-4 bg-brand-earth/10 rounded-3xl border border-brand-earth/20">
           <p className="text-xs font-bold text-brand-earth uppercase tracking-widest mb-1">{t.status}</p>
           <div className="flex items-center gap-2">
-            <div className={cn('w-2 h-2 rounded-full', aiReady ? 'bg-green-500 animate-pulse' : 'bg-brand-accent')} />
-            <span className="text-xs font-semibold">{aiReady ? t.online : t.offline}</span>
+            <div className={cn('w-2 h-2 rounded-full',
+              aiStatus === 'ready' ? 'bg-green-500 animate-pulse' : aiStatus === 'missing' ? 'bg-brand-accent' : 'bg-brand-secondary/20'
+            )} />
+            <span className="text-xs font-semibold">
+              {aiStatus === 'ready' ? t.online : aiStatus === 'missing' ? t.offline : '…'}
+            </span>
           </div>
         </div>
       </div>

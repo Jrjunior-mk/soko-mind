@@ -37,11 +37,23 @@ Built with React 19, Vite 6, Tailwind CSS 4 and the Google Gemini API.
 | `npm run lint`    | Type-check the project with TypeScript        |
 | `npm run clean`   | Delete the `dist/` folder                     |
 
+## Deploy to Vercel
+
+1. Import the GitHub repo in Vercel (framework preset: **Vite**).
+2. In **Project → Settings → Environment Variables**, add `GEMINI_API_KEY` with your key
+   (tick Production, Preview and Development).
+3. Redeploy (**Deployments → ⋯ → Redeploy**). The sidebar should show "AI Assistant Online".
+
+## How the API key stays secret
+
+All Gemini calls run in a server function, [`api/gemini.ts`](api/gemini.ts), which Vercel
+deploys at `/api/gemini`. The browser only talks to that endpoint, so the key is never
+included in the website's JavaScript. During `npm run dev`, Vite serves the same function
+locally and reads the key from `.env.local`.
+
 ## Notes
 
 - Voice input uses the browser's Web Speech API (best in Chrome or Edge).
-- **Security:** the Gemini key is bundled into the browser code, which is fine for local
-  use and demos. Before deploying publicly, move the Gemini calls behind a small server
-  (e.g. Express) so the key stays secret.
+- Crop photos are resized in the browser before upload to stay under Vercel's 4.5 MB request limit.
 
 View the original app in AI Studio: https://ai.studio/apps/d809fcdb-318d-4f31-a35f-bdb06daa68f6

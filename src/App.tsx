@@ -11,7 +11,7 @@ import KenyaHeatmap from './components/KenyaHeatmap';
 import PredictiveChart from './components/PredictiveChart';
 import CropDoctorModal from './components/CropDoctorModal';
 import NegotiationSim from './components/NegotiationSim';
-import { GeminiService, describeError, hasApiKey } from './services/gemini';
+import { GeminiService, describeError, useAiStatus } from './services/gemini';
 import { VoiceService, speechLangFor } from './services/voice';
 
 const LANGUAGES: Language[] = ['en', 'sw', 'sheng'];
@@ -38,7 +38,7 @@ export default function App() {
   const diagnosisRequest = useRef(0);
 
   const t = TRANSLATIONS[lang];
-  const aiReady = hasApiKey();
+  const aiStatus = useAiStatus();
 
   const changeTab = (tab: Tab) => {
     VoiceService.stop();
@@ -146,9 +146,9 @@ export default function App() {
 
         <div className="flex-1 px-4 md:px-6 lg:px-12 py-6 md:py-8 max-w-7xl mx-auto w-full space-y-6">
           {/* Setup / error banners */}
-          {!aiReady && !keyBannerDismissed && (
+          {aiStatus === 'missing' && !keyBannerDismissed && (
             <Banner tone="info" icon={<KeyRound size={18} />} onClose={() => setKeyBannerDismissed(true)} closeLabel={t.dismiss}>
-              <strong>{t.offline}.</strong> Add <code className="px-1.5 py-0.5 rounded bg-white/70 font-mono text-xs">GEMINI_API_KEY</code> to a <code className="px-1.5 py-0.5 rounded bg-white/70 font-mono text-xs">.env.local</code> file and restart the dev server to enable AI answers, crop scans, and the negotiation sim.
+              <strong>{t.offline}.</strong> Set <code className="px-1.5 py-0.5 rounded bg-white/70 font-mono text-xs">GEMINI_API_KEY</code> on the server (in <code className="px-1.5 py-0.5 rounded bg-white/70 font-mono text-xs">.env.local</code> locally, or in your hosting provider's environment variables) to enable AI answers, crop scans, and the negotiation sim.
             </Banner>
           )}
           <AnimatePresence>

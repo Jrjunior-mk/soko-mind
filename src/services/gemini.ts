@@ -1,159 +1,101 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { useEffect, useState } from 'react';
 import type { Content } from '@google/genai';
 import { Language, MarketInsight, CropDiagnosis } from '../types';
 
-const MODEL = 'gemini-3-flash-preview';
+/**
+ * Browser-side client for the Soko Mind AI.
+ * All Gemini calls go through our own server endpoint (/api/gemini) so the API key
+ * never ships to the browser.
+ */
+const ENDPOINT = '/api/gemini';
 
-const LANGUAGE_NAMES: Record<Language, string> = {
-  en: 'English',
-  sw: 'Kiswahili',
-  sheng: 'Sheng (Kenyan urban slang mixing Swahili and English)',
-};
-
-export class MissingApiKeyError extends Error {
-  constructor() {
-    super('GEMINI_API_KEY is not set. Add it to .env.local and restart the dev server.');
-    this.name = 'MissingApiKeyError';
+export class AiError extends Error {
+  constructor(message: string, public code?: string) {
+    super(message);
+    this.name = 'AiError';
   }
 }
 
-let client: GoogleGenAI | null = null;
-
-/** Created lazily so the app still loads (and shows a helpful message) without a key. */
-function getClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') throw new MissingApiKeyError();
-  if (!client) client = new GoogleGenAI({ apiKey });
-  return client;
-}
-
-export function hasApiKey(): boolean {
-  const apiKey = process.env.GEMINI_API_KEY;
-  return !!apiKey && apiKey !== 'MY_GEMINI_API_KEY';
-}
-
-function parseJson<T>(text: string | undefined, label: string): T {
-  if (!text) throw new Error(`Empty ${label} response from AI`);
+async function callAi<T>(payload: Record<string, unknown>): Promise<T> {
+  let res: Response;
   try {
-    return JSON.parse(text) as T;
-  } catch (e) {
-    console.error(`Failed to parse ${label}`, e, text);
-    throw new Error(`Could not read the ${label} returned by the AI`);
+    res = await fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new AiError('Could not reach the server. Check your internet connection and try again.');
   }
+
+  const data = await res.json().catch(() => null);
+  if (!res.ok) {
+    if (res.status === 413) throw new AiError('That photo is too large. Please try a smaller image.');
+    throw new AiError(data?.error || `Request failed (${res.status})`, data?.code);
+  }
+  return data as T;
 }
 
-/** Splits a data URL ("data:image/png;base64,....") into its MIME type and base64 payload. */
-function splitDataUrl(dataUrl: string): { mimeType: string; data: string } {
-  const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
-  if (!match) throw new Error('Unsupported image format');
-  return { mimeType: match[1], data: match[2] };
+/** Shrinks large photos before upload (server functions reject bodies over ~4.5 MB). */
+async function compressImage(dataUrl: string, maxSide = 1280, quality = 0.85): Promise<string> {
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    await img.decode();
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    if (scale === 1 && dataUrl.length < 1_500_000) return dataUrl;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', quality);
+  } catch {
+    return dataUrl; // e.g. a format the browser can't decode; let the server decide
+  }
 }
 
 export class GeminiService {
-  static async negotiateMarket(query: string, language: Language): Promise<MarketInsight> {
-    const languageName = LANGUAGE_NAMES[language];
-    const prompt = `
-      You are Soko Mind, a Kenyan market expert AI acting as a negotiator for a small-scale farmer.
-      Farmer's query: "${query}"
-
-      Analyze current Kenyan market trends (real or a realistic simulation) and respond with:
-      - crop: name of the crop
-      - bestSellingDay: the best day of the week to sell (full English day name, e.g. "Friday")
-      - fairPriceRange: { min, max } in KES per 90kg bag (or the usual unit for that crop)
-      - demandTrend: increasing, stable, or decreasing
-      - confidenceScore: integer 0 to 100
-      - negotiationScript: a few lines the farmer can say to a buyer, written in ${languageName}
-      - advice: a short summary of why this is the best decision, written in ${languageName}
-    `;
-
-    const response = await getClient().models.generateContent({
-      model: MODEL,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            crop: { type: Type.STRING },
-            bestSellingDay: { type: Type.STRING },
-            fairPriceRange: {
-              type: Type.OBJECT,
-              properties: {
-                min: { type: Type.NUMBER },
-                max: { type: Type.NUMBER },
-              },
-              required: ['min', 'max'],
-            },
-            demandTrend: { type: Type.STRING, enum: ['increasing', 'stable', 'decreasing'] },
-            confidenceScore: { type: Type.NUMBER },
-            negotiationScript: { type: Type.STRING },
-            advice: { type: Type.STRING },
-          },
-          required: ['crop', 'bestSellingDay', 'fairPriceRange', 'demandTrend', 'confidenceScore', 'negotiationScript', 'advice'],
-        },
-      },
-    });
-
-    return parseJson<MarketInsight>(response.text, 'market insight');
+  static negotiateMarket(query: string, language: Language): Promise<MarketInsight> {
+    return callAi<MarketInsight>({ action: 'market', query, language });
   }
 
   static async diagnoseCrop(imageDataUrl: string, language: Language): Promise<CropDiagnosis> {
-    const { mimeType, data } = splitDataUrl(imageDataUrl);
-    const languageName = LANGUAGE_NAMES[language];
-    const prompt = `
-      You are a Smart Vision Crop Doctor for East African agriculture.
-      Analyze this crop image and provide (write the text fields in ${languageName}):
-      - condition: name of the disease or pest (or "Healthy")
-      - severity: low, medium, high, or critical
-      - treatment: recommended action, localized to the Kenyan context
-      - description: brief explanation of what you see
-      If the image is not a plant, say so in "condition" and use severity "low".
-    `;
-
-    const response = await getClient().models.generateContent({
-      model: MODEL,
-      contents: {
-        parts: [{ inlineData: { mimeType, data } }, { text: prompt }],
-      },
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            condition: { type: Type.STRING },
-            severity: { type: Type.STRING, enum: ['low', 'medium', 'high', 'critical'] },
-            treatment: { type: Type.STRING },
-            description: { type: Type.STRING },
-          },
-          required: ['condition', 'severity', 'treatment', 'description'],
-        },
-      },
-    });
-
-    return parseJson<CropDiagnosis>(response.text, 'crop diagnosis');
+    const image = await compressImage(imageDataUrl);
+    return callAi<CropDiagnosis>({ action: 'diagnose', image, language });
   }
 
   static async simulateNegotiation(message: string, history: Content[], language: Language): Promise<string> {
-    const systemInstruction = `
-      You are "Tough Mbugua", role-playing as a tough but fair produce middleman in a Kenyan market.
-      The user is a farmer trying to sell their crops.
-      Respond in ${LANGUAGE_NAMES[language]}. Use Kenyan market slang where appropriate.
-      Challenge the farmer on quality, current oversupply, or transport costs, but be open to a good deal.
-      Keep replies short (1-3 sentences) and conversational.
-    `;
-
-    const response = await getClient().models.generateContent({
-      model: MODEL,
-      contents: [...history, { role: 'user', parts: [{ text: message }] }],
-      config: { systemInstruction },
-    });
-
-    return response.text?.trim() || '...';
+    const { reply } = await callAi<{ reply: string }>({ action: 'negotiate', message, history, language });
+    return reply;
   }
 }
 
 export function describeError(e: unknown): string {
-  if (e instanceof MissingApiKeyError) return e.message;
   if (e instanceof Error) return e.message;
   return 'Something went wrong. Please try again.';
+}
+
+// ---- AI availability status (asks the server whether a key is configured) ----
+
+export type AiStatus = 'checking' | 'ready' | 'missing';
+
+let aiStatus: AiStatus = 'checking';
+let statusPromise: Promise<AiStatus> | null = null;
+
+function fetchStatus(): Promise<AiStatus> {
+  statusPromise ??= fetch(ENDPOINT)
+    .then((r) => r.json())
+    .then((d) => (aiStatus = d?.configured ? 'ready' : 'missing'))
+    .catch(() => (aiStatus = 'missing'));
+  return statusPromise;
+}
+
+export function useAiStatus(): AiStatus {
+  const [status, setStatus] = useState<AiStatus>(aiStatus);
+  useEffect(() => {
+    let alive = true;
+    fetchStatus().then((s) => alive && setStatus(s));
+    return () => { alive = false; };
+  }, []);
+  return status;
 }
