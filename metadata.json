@@ -1,0 +1,6 @@
+{
+  "name": "Soko Mind",
+  "description": "The Farmer's AI Market Negotiator - A multilingual smart farming platform for real-time market insights, crop health diagnostics, and fair price negotiation across Kenya.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["Multilingual AI Negotiator", "Smart Vision Crop Doctor", "Live Market Heatmap", "Predictive Price Engine"]
+}

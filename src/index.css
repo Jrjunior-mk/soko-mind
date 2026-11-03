@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-brand-light: #f0f7ef;
+  --color-brand-primary: #2d6a4f;
+  --color-brand-secondary: #081c15;
+  --color-brand-accent: #ff9f1c;
+  --color-brand-earth: #b08968;
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-brand-light text-brand-secondary antialiased overflow-x-hidden;
+  }
+
+  ::selection {
+    @apply bg-brand-primary text-white;
+  }
+
+  button:not(:disabled),
+  [role="button"],
+  label[for],
+  label:has(> input[type="file"]) {
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand-primary;
+  }
+}
+
+/* Declared as utilities (not plain classes) so hover:/bg-* overrides on .glass elements still apply. */
+@utility glass {
+  @apply backdrop-blur-md bg-white/70 border border-white/40 shadow-lg shadow-brand-primary/5;
+}
+
+@utility glass-dark {
+  @apply backdrop-blur-md bg-brand-secondary/90 border-t border-white/10 shadow-xl;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-brand-primary/20 rounded-full hover:bg-brand-primary/40;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
